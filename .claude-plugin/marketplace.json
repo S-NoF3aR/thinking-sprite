@@ -1,0 +1,5 @@
+{
+  "name": "thinking-sprite",
+  "owner": { "name": "S-NoF3aR" },
+  "plugins": [{ "name": "thinking-sprite", "source": "./" }]
+}
