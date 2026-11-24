@@ -18,8 +18,6 @@ From a shell:
 claude plugin install thinking-sprite --marketplace S-NoF3aR/thinking-sprite
 ```
 
-The repository is private: installing needs read access to it on GitHub and a git credential for github.com on your machine (an SSH key, or `gh auth login` then `gh auth setup-git`).
-
 ## Adding the sprite
 
 The repository ships no artwork. Put your own frames as numbered PNG files (`0.png`, `1.png`, …, any count) into a `frames/` folder in the installed plugin. They are shown in the order of their numbers, one every 350 ms, and are read when a session starts. Without frames the plugin draws nothing.
