@@ -42,6 +42,24 @@ const isMoods = (value: unknown): value is Mood[] =>
       mood.lines.every((line: unknown) => typeof line === 'string'),
   )
 
+const MOODS_SYSTEM = `You write the lines of a speech bubble next to an animated sprite in a terminal while an AI coding assistant works on a task.
+Answer with JSON only, no other text: an array of 4 moods,
+[{ "after": 0, "lines": [...] }, { "after": 15000, "lines": [...] }, { "after": 45000, "lines": [...] }, { "after": 120000, "lines": [...] }].
+"after" is how many milliseconds the task has run; later moods react to a task that takes longer and longer.
+Each mood has 3 lines of at most 30 characters. Write them in the tone the user gives.`
+
+// Turns a model's reply into moods: the JSON array, also inside a code fence.
+export const parseMoods = (reply: string): Mood[] | undefined => {
+  const json = reply.slice(reply.indexOf('['), reply.lastIndexOf(']') + 1)
+  try {
+    const parsed: unknown = JSON.parse(json)
+
+    return isMoods(parsed) ? [...parsed].sort((a, b) => a.after - b.after) : undefined
+  } catch {
+    return undefined
+  }
+}
+
 const isFrameFile = (name: string) => /^\d+\.png$/.test(name)
 
 const BASE64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
@@ -119,6 +137,11 @@ export const register: Register = on => {
       name: 'sprite-gif',
       description: 'Replace the sprite frames with the frames of a GIF',
       argumentHint: '<path to gif>',
+    })
+    await $.command.register({
+      name: 'sprite-moods',
+      description: 'Write new speech bubble lines in a tone you describe',
+      argumentHint: '<tone>',
     })
     // Kept across plugin updates, unlike $.plugin.root.
     let env: Record<string, string> = {}
@@ -291,6 +314,42 @@ export const register: Register = on => {
     $.ui.invalidate('ui.render')
 
     return { text: `Made ${frames.length} frames from ${gif} in ${dir}.` }
+  })
+
+  on('command.run', { command: 'sprite-moods' }, async ($, e) => {
+    const tone = e.args.trim()
+    if (tone === '') {
+      return { text: 'Usage: /sprite-moods <tone>, for example /sprite-moods grumpy pirate' }
+    }
+    if (dataError !== undefined) {
+      return { text: `Could not get the plugin's data folder: ${dataError}` }
+    }
+    let reply
+    try {
+      reply = await $.model.complete({
+        model: 'haiku',
+        system: MOODS_SYSTEM,
+        prompt: `The tone: ${tone}`,
+        maxTokens: 1024,
+        timeoutMs: 60_000,
+      })
+    } catch (error) {
+      return { text: `Could not ask the model: ${error instanceof Error ? error.message : error}` }
+    }
+    if (!reply.isAnswered) {
+      return { text: `The model gave no lines (${reply.reason}). Try again.` }
+    }
+    const generated = parseMoods(reply.text)
+    if (generated === undefined) {
+      return { text: 'The model answered in the wrong shape. Try again.' }
+    }
+    const file = `${data}/moods.json`
+    await $.fs.write(file, `${JSON.stringify(generated, null, 2)}\n`)
+    moods = generated
+    $.ui.invalidate('ui.render')
+    const preview = generated.map(mood => `${mood.after / 1000}s: ${mood.lines.join(' · ')}`).join('\n')
+
+    return { text: `New lines in ${file}:\n${preview}` }
   })
 
   on('ui.render', { component: 'Spinner' }, async ($, e, next) => {
