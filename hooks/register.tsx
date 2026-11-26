@@ -5,6 +5,17 @@ const FRAME_MS = 350
 const LINE_MS = 4000
 // The columns follow from the frames' aspect ratio, see columnsFor.
 const ROWS = 5
+// How much taller than wide a terminal cell is, when the terminal does not say:
+// about 2.2 in common monospace fonts.
+const DEFAULT_CELL_RATIO = 2.2
+
+// Prints the cell height over width of the terminal at argv[1], from its size in pixels.
+const CELL_RATIO_SCRIPT = `
+import fcntl, struct, sys, termios
+with open(sys.argv[1], 'rb') as tty:
+    rows, cols, width, height = struct.unpack('HHHH', fcntl.ioctl(tty, termios.TIOCGWINSZ, bytes(8)))
+print((height / rows) / (width / cols) if rows and cols and width and height else '')
+`
 
 type Mood = { after: number; lines: string[] }
 
@@ -39,14 +50,13 @@ const decodeBase64 = (text: string) => {
   return (bits.match(/.{8}/g) ?? []).map(byte => parseInt(byte, 2))
 }
 
-// A terminal cell is about twice as tall as wide, and the picture is stretched
-// to fill its box. A PNG holds its width and height at bytes 16 to 23.
-const columnsFor = (header: string) => {
+// The picture is stretched to fill its box of cells. A PNG holds its width and height at bytes 16 to 23.
+const columnsFor = (header: string, cellRatio: number) => {
   const bytes = decodeBase64(header)
   const read = (at: number) => bytes.slice(at, at + 4).reduce((value, byte) => value * 256 + byte, 0)
   const [width, height] = [read(0), read(4)]
 
-  return height > 0 ? Math.min(255, Math.max(1, Math.round((ROWS * 2 * width) / height))) : ROWS
+  return height > 0 ? Math.min(255, Math.max(1, Math.round((ROWS * cellRatio * width) / height))) : ROWS
 }
 
 const toFrames = (dir: string, entries: FsEntry[]): Frame[] =>
@@ -59,6 +69,7 @@ const toFrames = (dir: string, entries: FsEntry[]): Frame[] =>
 export const register: Register = on => {
   let frames: Frame[] = []
   let columns = ROWS
+  let cellRatio = DEFAULT_CELL_RATIO
   let moods = DEFAULT_MOODS
   let data = ''
   let frame = 0
@@ -90,7 +101,21 @@ export const register: Register = on => {
       argumentHint: '<path to gif>',
     })
     // Kept across plugin updates, unlike $.plugin.root.
-    data = (await $.process.hookEnv()).CLAUDE_PLUGIN_DATA ?? ''
+    const env = await $.process.hookEnv()
+    data = env.CLAUDE_PLUGIN_DATA ?? ''
+    // The hooks run without a terminal, so ask the one Claude Code draws in.
+    try {
+      const tty = (await $.process.run(['ps', '-o', 'tty=', '-p', env.CLAUDE_PID ?? ''])).stdout.trim()
+      if (tty !== '' && !tty.startsWith('?')) {
+        const { stdout } = await $.process.run(['python3', '-I', '-c', CELL_RATIO_SCRIPT, `/dev/${tty}`])
+        const ratio = parseFloat(stdout)
+        if (ratio >= 1 && ratio <= 4) {
+          cellRatio = ratio
+        }
+      }
+    } catch {
+      // No ps or python3: keep the default.
+    }
     const dir = `${data}/frames`
     // Frames used to live in the installed plugin, one copy per version under
     // the plugin's cache folder: copy the newest set over once.
@@ -115,7 +140,7 @@ export const register: Register = on => {
     }
     frames = toFrames(dir, (await $.fs.exists(dir)) ? await $.fs.list(dir) : [])
     if (frames[0] !== undefined) {
-      columns = columnsFor((await $.fs.read(frames[0].file, { as: 'bytes', offset: 16, length: 8 })).base64)
+      columns = columnsFor((await $.fs.read(frames[0].file, { as: 'bytes', offset: 16, length: 8 })).base64, cellRatio)
     }
     const moodsFile = `${data}/moods.json`
     if (await $.fs.exists(moodsFile)) {
@@ -162,6 +187,9 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'sprite' }, async $ => {
+    if (frames.length === 0) {
+      return { text: `No frames in ${data}/frames: add numbered PNGs there or run /sprite-gif <path to gif>.` }
+    }
     isHidden = !isHidden
     $.ui.invalidate('ui.render')
 
@@ -204,7 +232,7 @@ export const register: Register = on => {
     }
     frames = toFrames(dir, await $.fs.list(dir))
     if (frames[0] !== undefined) {
-      columns = columnsFor((await $.fs.read(frames[0].file, { as: 'bytes', offset: 16, length: 8 })).base64)
+      columns = columnsFor((await $.fs.read(frames[0].file, { as: 'bytes', offset: 16, length: 8 })).base64, cellRatio)
     }
     frame = 0
     $.ui.invalidate('ui.render')
