@@ -26,7 +26,7 @@ The data folder is `~/.claude/plugins/data/thinking-sprite-thinking-sprite/`. Cl
 
 Version 0.1.0 read frames from the installed plugin's own folder. When the data folder has no `frames/` yet, the first session copies the newest `frames/` folder it finds in the other installed versions under `~/.claude/plugins/cache/thinking-sprite/thinking-sprite/`.
 
-The sprite is 5 rows high and as wide as the frames' aspect ratio needs. For another speed or height, adjust `FRAME_MS` and `ROWS` in `hooks/register.tsx`.
+The sprite is 5 rows high and as wide as the frames' aspect ratio needs. For another speed or height, adjust `FRAME_MS` and `ROWS` in `hooks/register.tsx`. The width depends on how much taller than wide a terminal cell is. The plugin asks the terminal for its cell size in pixels when a session starts, which needs `python3`. Where that fails, as in a tmux that reports no pixel size, it uses `DEFAULT_CELL_RATIO`; adjust that if the sprite looks squeezed or stretched.
 
 ## Changing the speech bubble
 
