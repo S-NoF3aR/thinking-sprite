@@ -10,6 +10,7 @@ const ran = (exitCode: number, stderr = '') => ({
 const start = async ($: Args[0], on: Args[1]) => {
   on('command.register', (_, e) => ({ value: { command: e.name } }))
   on('fs.exists', () => ({ value: false }))
+  on('fs.list', () => ({ value: [] }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
 }

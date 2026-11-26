@@ -48,6 +48,8 @@ Put a `moods.json` file into the same data folder. Each mood is a list of lines 
 
 The file is read when a session starts. Without it, or when it is not valid, the bubble shows the built-in lines from `DEFAULT_MOODS` in `hooks/register.tsx`, and the debug log (`claude --debug`) says what was wrong with the file.
 
+To have new lines written for you, run `/sprite-moods <tone>`, for example `/sprite-moods grumpy pirate`. It asks Claude Haiku for four moods of three lines each, writes them to `moods.json` (replacing what is there) and uses them right away. The request counts toward the session's cost like any other.
+
 ## Turning a GIF into frames
 
 `/sprite-gif <path to gif>` does steps 2 and 3 below in one go: it crops the GIF to the figure, scales it to 200 pixels high, replaces the frames in the data folder and shows them right away. It needs `magick` on the `PATH`. The cropping works for a dark or transparent background. For a light background, a transparent background or another frame delay, use the steps below.
