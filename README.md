@@ -22,7 +22,13 @@ claude plugin install thinking-sprite --marketplace S-NoF3aR/thinking-sprite
 
 The repository ships no artwork. Put your own frames as numbered PNG files (`0.png`, `1.png`, …, any count) into a `frames/` folder in the plugin's data folder. They are shown in the order of their numbers, one every 350 ms, and are read when a session starts. Without frames the plugin draws nothing.
 
-The data folder is `~/.claude/plugins/data/thinking-sprite-thinking-sprite/`. Claude Code keeps it across plugin updates and creates it the first time a session starts with the plugin installed.
+The data folder is `~/.claude/plugins/data/thinking-sprite-thinking-sprite/` (under `$CLAUDE_CONFIG_DIR` instead of `~/.claude` where that is set). Claude Code keeps it across plugin updates. It does not exist right after installing: it is created when the first session with the plugin starts. To fill it before that, create it yourself:
+
+```
+mkdir -p ~/.claude/plugins/data/thinking-sprite-thinking-sprite/frames
+```
+
+The simplest way to get frames is `/sprite-gif` (see below), which creates the folder itself. `/sprite` names the folder when it has no frames.
 
 Version 0.1.0 read frames from the installed plugin's own folder. When the data folder has no `frames/` yet, the first session copies the newest `frames/` folder it finds in the other installed versions under `~/.claude/plugins/cache/thinking-sprite/thinking-sprite/`.
 

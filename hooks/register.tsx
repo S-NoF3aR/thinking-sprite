@@ -187,6 +187,9 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'sprite' }, async $ => {
+    if (frames.length === 0) {
+      return { text: `No frames in ${data}/frames: add numbered PNGs there or run /sprite-gif <path to gif>.` }
+    }
     isHidden = !isHidden
     $.ui.invalidate('ui.render')
 
