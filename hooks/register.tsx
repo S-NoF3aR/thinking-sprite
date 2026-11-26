@@ -72,6 +72,8 @@ export const register: Register = on => {
   let cellRatio = DEFAULT_CELL_RATIO
   let moods = DEFAULT_MOODS
   let data = ''
+  // Why the data folder is unavailable; the commands report it.
+  let dataError: string | undefined
   let frame = 0
   let isHidden = false
   let site: string | undefined
@@ -101,8 +103,22 @@ export const register: Register = on => {
       argumentHint: '<path to gif>',
     })
     // Kept across plugin updates, unlike $.plugin.root.
-    const env = await $.process.hookEnv()
-    data = env.CLAUDE_PLUGIN_DATA ?? ''
+    let env: Record<string, string>
+    try {
+      env = await $.process.hookEnv()
+    } catch (error) {
+      dataError = error instanceof Error ? error.message : `${error}`
+      $.ui.log(`could not get the data folder: ${dataError}`)
+
+      return next(e)
+    }
+    if (env.CLAUDE_PLUGIN_DATA === undefined) {
+      dataError = 'this Claude Code version does not set CLAUDE_PLUGIN_DATA'
+      $.ui.log(`could not get the data folder: ${dataError}`)
+
+      return next(e)
+    }
+    data = env.CLAUDE_PLUGIN_DATA
     // The hooks run without a terminal, so ask the one Claude Code draws in.
     try {
       const tty = (await $.process.run(['ps', '-o', 'tty=', '-p', env.CLAUDE_PID ?? ''])).stdout.trim()
@@ -187,6 +203,9 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'sprite' }, async $ => {
+    if (dataError !== undefined) {
+      return { text: `Could not get the plugin's data folder: ${dataError}` }
+    }
     if (frames.length === 0) {
       return { text: `No frames in ${data}/frames: add numbered PNGs there or run /sprite-gif <path to gif>.` }
     }
@@ -200,6 +219,9 @@ export const register: Register = on => {
     let gif = e.args.trim().replace(/^(["'])(.*)\1$/, '$2')
     if (gif === '') {
       return { text: 'Usage: /sprite-gif <path to gif>' }
+    }
+    if (dataError !== undefined) {
+      return { text: `Could not get the plugin's data folder: ${dataError}` }
     }
     if (gif.startsWith('~/')) {
       gif = `${await $.env.get('HOME')}${gif.slice(1)}`
