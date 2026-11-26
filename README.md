@@ -1,6 +1,6 @@
 # thinking-sprite
 
-A Claude Code plugin that shows a small animated sprite next to the thinking line while Claude works. `/sprite` shows or hides it.
+A Claude Code plugin that shows a small animated sprite next to the thinking line while Claude works, with a speech bubble that complains more the longer the turn takes. `/sprite` shows or hides it. The bubble's lines are the `MOODS` list in `hooks/register.tsx`.
 
 The sprite is drawn as real pixels only in terminals with an image protocol: kitty, Ghostty, iTerm2 3.5 or later, and tmux with `allow-passthrough` on. Other terminals show `(¬_¬)` instead.
 
