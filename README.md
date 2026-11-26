@@ -1,6 +1,6 @@
 # thinking-sprite
 
-A Claude Code plugin that shows a small animated sprite next to the thinking line while Claude works, with a speech bubble that complains more the longer the turn takes. `/sprite` shows or hides it. The bubble's lines are the `MOODS` list in `hooks/register.tsx`.
+A Claude Code plugin that shows a small animated sprite next to the thinking line while Claude works, with a speech bubble that complains more the longer the turn takes. `/sprite` shows or hides it. Both the sprite and the bubble's lines can be your own.
 
 The sprite is drawn as real pixels only in terminals with an image protocol: kitty, Ghostty, iTerm2 3.5 or later, and tmux with `allow-passthrough` on. Other terminals show `(¬_¬)` instead.
 
@@ -20,15 +20,33 @@ claude plugin install thinking-sprite --marketplace S-NoF3aR/thinking-sprite
 
 ## Adding the sprite
 
-The repository ships no artwork. Put your own frames as numbered PNG files (`0.png`, `1.png`, …, any count) into a `frames/` folder in the installed plugin. They are shown in the order of their numbers, one every 350 ms, and are read when a session starts. Without frames the plugin draws nothing.
+The repository ships no artwork. Put your own frames as numbered PNG files (`0.png`, `1.png`, …, any count) into a `frames/` folder in the plugin's data folder. They are shown in the order of their numbers, one every 350 ms, and are read when a session starts. Without frames the plugin draws nothing.
 
-The installed plugin lives under `~/.claude/plugins/cache/thinking-sprite/thinking-sprite/`, in a folder named after the installed version. An update installs a fresh copy, so copy your frames in again after updating.
+The data folder is `~/.claude/plugins/data/thinking-sprite-thinking-sprite/`. Claude Code keeps it across plugin updates and creates it the first time a session starts with the plugin installed.
 
-For another speed or size, adjust `FRAME_MS`, `COLUMNS` and `ROWS` in `hooks/register.tsx`.
+Version 0.1.0 read frames from the installed plugin's own folder. When the data folder has no `frames/` yet, the first session copies the newest `frames/` folder it finds in the other installed versions under `~/.claude/plugins/cache/thinking-sprite/thinking-sprite/`.
+
+The sprite is 5 rows high and as wide as the frames' aspect ratio needs. For another speed or height, adjust `FRAME_MS` and `ROWS` in `hooks/register.tsx`.
+
+## Changing the speech bubble
+
+Put a `moods.json` file into the same data folder. Each mood is a list of lines and the time, in milliseconds since the prompt was sent, from which they are shown. The bubble switches to another line of the current mood every 4 seconds:
+
+```json
+[
+  { "after": 0, "lines": ["Thinking…", "One sec."] },
+  { "after": 30000, "lines": ["Still on it."] },
+  { "after": 120000, "lines": ["This is a big one."] }
+]
+```
+
+The file is read when a session starts. Without it, or when it is not valid, the bubble shows the built-in lines from `DEFAULT_MOODS` in `hooks/register.tsx`, and the debug log (`claude --debug`) says what was wrong with the file.
 
 ## Turning a GIF into frames
 
-These steps use [ImageMagick 7](https://imagemagick.org) (`magick`). Run them in the installed plugin's folder, with your GIF as `sprite.gif`.
+`/sprite-gif <path to gif>` does steps 2 and 3 below in one go: it crops the GIF to the figure, scales it to 200 pixels high, replaces the frames in the data folder and shows them right away. It needs `magick` on the `PATH`. The cropping works for a dark or transparent background. For a light background, a transparent background or another frame delay, use the steps below.
+
+These steps use [ImageMagick 7](https://imagemagick.org) (`magick`). Run them in the plugin's data folder, with your GIF as `sprite.gif`.
 
 1. Look at the GIF: one line per frame, with its size and delay in hundredths of a second.
 
@@ -62,5 +80,3 @@ These steps use [ImageMagick 7](https://imagemagick.org) (`magick`). Run them in
    Raise `-fuzz` if a fringe of background stays, lower it if parts of the figure disappear.
 
 5. Start a new Claude Code session: the frames are read when a session starts.
-
-A terminal cell is about twice as tall as it is wide. For a figure that is not about three quarters as wide as it is tall, change `COLUMNS` against `ROWS` so it is not stretched.
