@@ -59,6 +59,15 @@ const columnsFor = (header: string, cellRatio: number) => {
   return height > 0 ? Math.min(255, Math.max(1, Math.round((ROWS * cellRatio * width) / height))) : ROWS
 }
 
+// The data folder's name as Claude Code makes it: <plugin>-<marketplace> for an
+// installed plugin (root <config dir>/plugins/cache/<marketplace>/<plugin>/<version>),
+// <plugin>-inline for one loaded from a folder.
+export const dataFolderName = (root: string, name: string) => {
+  const [, marketplace, plugin] = root.match(/\/cache\/([^/]+)\/([^/]+)\/[^/]+$/) ?? []
+
+  return marketplace === undefined ? `${name}-inline` : `${plugin}-${marketplace}`.replace(/[^A-Za-z0-9_-]/g, '-')
+}
+
 const toFrames = (dir: string, entries: FsEntry[]): Frame[] =>
   entries
     .filter(entry => entry.kind === 'file' && isFrameFile(entry.name))
@@ -72,6 +81,8 @@ export const register: Register = on => {
   let cellRatio = DEFAULT_CELL_RATIO
   let moods = DEFAULT_MOODS
   let data = ''
+  // Why the data folder is unavailable; the commands report it.
+  let dataError: string | undefined
   let frame = 0
   let isHidden = false
   let site: string | undefined
@@ -101,11 +112,38 @@ export const register: Register = on => {
       argumentHint: '<path to gif>',
     })
     // Kept across plugin updates, unlike $.plugin.root.
-    const env = await $.process.hookEnv()
-    data = env.CLAUDE_PLUGIN_DATA ?? ''
-    // The hooks run without a terminal, so ask the one Claude Code draws in.
+    let env: Record<string, string> = {}
+    let reason = 'Claude Code sets no CLAUDE_PLUGIN_DATA'
     try {
-      const tty = (await $.process.run(['ps', '-o', 'tty=', '-p', env.CLAUDE_PID ?? ''])).stdout.trim()
+      env = await $.process.hookEnv()
+    } catch (error) {
+      reason = error instanceof Error ? error.message : `${error}`
+    }
+    if (env.CLAUDE_PLUGIN_DATA !== undefined) {
+      data = env.CLAUDE_PLUGIN_DATA
+    } else {
+      // Where Claude Code does not say, build the path it uses and create it.
+      const configDir = (await $.env.get('CLAUDE_CONFIG_DIR')) ?? `${await $.env.get('HOME')}/.claude`
+      data = `${configDir}/plugins/data/${dataFolderName($.plugin.root, $.plugin.name)}`
+      try {
+        const { exitCode, stderr } = await $.process.run(['mkdir', '-p', data])
+        if (exitCode !== 0) {
+          throw new Error(stderr.trim())
+        }
+      } catch (error) {
+        dataError = `${reason}, and creating ${data} failed: ${error instanceof Error ? error.message : error}`
+        $.ui.log(`could not get the data folder: ${dataError}`)
+
+        return next(e)
+      }
+      $.ui.log(`${reason}, using ${data}`)
+    }
+    // The hooks run without a terminal, so ask the one Claude Code draws in;
+    // without CLAUDE_PID, the parent of a child process is Claude Code.
+    try {
+      const ps =
+        env.CLAUDE_PID === undefined ? ['sh', '-c', 'ps -o tty= -p "$PPID"'] : ['ps', '-o', 'tty=', '-p', env.CLAUDE_PID]
+      const tty = (await $.process.run(ps)).stdout.trim()
       if (tty !== '' && !tty.startsWith('?')) {
         const { stdout } = await $.process.run(['python3', '-I', '-c', CELL_RATIO_SCRIPT, `/dev/${tty}`])
         const ratio = parseFloat(stdout)
@@ -187,6 +225,9 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'sprite' }, async $ => {
+    if (dataError !== undefined) {
+      return { text: `Could not get the plugin's data folder: ${dataError}` }
+    }
     if (frames.length === 0) {
       return { text: `No frames in ${data}/frames: add numbered PNGs there or run /sprite-gif <path to gif>.` }
     }
@@ -200,6 +241,9 @@ export const register: Register = on => {
     let gif = e.args.trim().replace(/^(["'])(.*)\1$/, '$2')
     if (gif === '') {
       return { text: 'Usage: /sprite-gif <path to gif>' }
+    }
+    if (dataError !== undefined) {
+      return { text: `Could not get the plugin's data folder: ${dataError}` }
     }
     if (gif.startsWith('~/')) {
       gif = `${await $.env.get('HOME')}${gif.slice(1)}`
