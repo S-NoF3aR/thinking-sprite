@@ -5,6 +5,8 @@ const FRAME_MS = 350
 const LINE_MS = 4000
 // The columns follow from the frames' aspect ratio, see columnsFor.
 const ROWS = 5
+// The width when the frames' size cannot be read.
+const DEFAULT_COLUMNS = 8
 // How much taller than wide a terminal cell is, when the terminal does not say:
 // about 2.2 in common monospace fonts.
 const DEFAULT_CELL_RATIO = 2.2
@@ -50,13 +52,20 @@ const decodeBase64 = (text: string) => {
   return (bits.match(/.{8}/g) ?? []).map(byte => parseInt(byte, 2))
 }
 
-// The picture is stretched to fill its box of cells. A PNG holds its width and height at bytes 16 to 23.
-const columnsFor = (header: string, cellRatio: number) => {
-  const bytes = decodeBase64(header)
-  const read = (at: number) => bytes.slice(at, at + 4).reduce((value, byte) => value * 256 + byte, 0)
-  const [width, height] = [read(0), read(4)]
+const PNG_START = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]
 
-  return height > 0 ? Math.min(255, Math.max(1, Math.round((ROWS * cellRatio * width) / height))) : ROWS
+// The picture is stretched to fill its box of cells. `start` is the base64 of the
+// file's first bytes: a PNG holds its width and height at bytes 16 to 23. Only the
+// first 24 bytes are decoded, in case a read returned the whole file.
+export const columnsFor = (start: string, cellRatio: number) => {
+  const bytes = decodeBase64(start.slice(0, 32))
+  const read = (at: number) => bytes.slice(at, at + 4).reduce((value, byte) => value * 256 + byte, 0)
+  const [width, height] = [read(16), read(20)]
+  if (bytes.length < 24 || PNG_START.some((byte, at) => bytes[at] !== byte) || width === 0 || height === 0) {
+    return DEFAULT_COLUMNS
+  }
+
+  return Math.min(255, Math.max(1, Math.round((ROWS * cellRatio * width) / height)))
 }
 
 // The data folder's name as Claude Code makes it: <plugin>-<marketplace> for an
@@ -178,7 +187,7 @@ export const register: Register = on => {
     }
     frames = toFrames(dir, (await $.fs.exists(dir)) ? await $.fs.list(dir) : [])
     if (frames[0] !== undefined) {
-      columns = columnsFor((await $.fs.read(frames[0].file, { as: 'bytes', offset: 16, length: 8 })).base64, cellRatio)
+      columns = columnsFor((await $.fs.read(frames[0].file, { as: 'bytes', length: 24 })).base64, cellRatio)
     }
     const moodsFile = `${data}/moods.json`
     if (await $.fs.exists(moodsFile)) {
@@ -276,7 +285,7 @@ export const register: Register = on => {
     }
     frames = toFrames(dir, await $.fs.list(dir))
     if (frames[0] !== undefined) {
-      columns = columnsFor((await $.fs.read(frames[0].file, { as: 'bytes', offset: 16, length: 8 })).base64, cellRatio)
+      columns = columnsFor((await $.fs.read(frames[0].file, { as: 'bytes', length: 24 })).base64, cellRatio)
     }
     frame = 0
     $.ui.invalidate('ui.render')
