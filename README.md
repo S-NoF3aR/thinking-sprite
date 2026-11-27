@@ -24,7 +24,6 @@ The plugin is a Claude Code mod (`hooks/register.tsx`). It runs these programs, 
 | `mkdir -p` | Session start, only when Claude Code names no data folder | Creates the plugin's data folder |
 | `ps -o tty=` (through `sh -c` when Claude Code gives no `CLAUDE_PID`) | Session start | Finds the terminal Claude Code draws in |
 | `python3 -I -c …` | Session start | Reads that terminal's cell size in pixels (`TIOCGWINSZ`), so the sprite is not squeezed. Reads nothing else |
-| `cp -R` | Session start, once | Copies frames from an older plugin version into the data folder |
 | `magick`, `mkdir -p`, `rm -rf`, `mv` | Only on `/sprite-gif` | Turns the GIF you name into frames and replaces `frames/` in the data folder. `rm -rf` only touches `frames/` and `frames.new/` there |
 
 It reads only its own data folder (`frames/`, `moods.json`) and the GIF you pass to `/sprite-gif`.
@@ -56,8 +55,6 @@ mkdir -p ~/.claude/plugins/data/thinking-sprite-thinking-sprite/frames
 ```
 
 The simplest way to get frames is `/sprite-gif` (see below), which creates the folder itself. `/sprite` names the folder when it has no frames.
-
-Version 0.1.0 read frames from the installed plugin's own folder. When the data folder has no `frames/` yet, the first session copies the newest `frames/` folder it finds in the other installed versions under `~/.claude/plugins/cache/thinking-sprite/thinking-sprite/`.
 
 The sprite is 5 rows high and as wide as the frames' aspect ratio needs. For another speed or height, adjust `FRAME_MS` and `ROWS` in `hooks/register.tsx`. The width depends on how much taller than wide a terminal cell is. The plugin asks the terminal for its cell size in pixels when a session starts, which needs `python3`. Where that fails, as in a tmux that reports no pixel size, it uses `DEFAULT_CELL_RATIO`; adjust that if the sprite looks squeezed or stretched.
 
