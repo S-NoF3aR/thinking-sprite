@@ -387,6 +387,19 @@ export const register: Register = (on, options) => {
       if (isHidden || site === undefined || !isTurnRunning) {
         return
       }
+      // The spinner, and the sprite with it, goes away while the answer is
+      // written or a tool runs: a blit is then denied, and the bubble stays
+      // quiet until the spinner draws the sprite again.
+      if (frames.length >= 2) {
+        frame = (frame + 1) % frames.length
+        const blit = await $.ui.blit({ requestId: site, key: KEY, source: source() })
+        if ('deny' in blit) {
+          site = undefined
+          $.ui.invalidate('ui.render')
+
+          return
+        }
+      }
       const now = await $.clock.now()
       // A new mood shows its line at once; within a mood the line changes every
       // LINE_MS. Each new line is said as it appears.
@@ -409,14 +422,6 @@ export const register: Register = (on, options) => {
             }
           })
         }
-      }
-      if (frames.length < 2) {
-        return
-      }
-      frame = (frame + 1) % frames.length
-      const blit = await $.ui.blit({ requestId: site, key: KEY, source: source() })
-      if ('deny' in blit) {
-        $.ui.invalidate('ui.render')
       }
     })
 
