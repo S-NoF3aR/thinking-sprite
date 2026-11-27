@@ -262,9 +262,10 @@ export const register: Register = (on, options) => {
   let eleven: ElevenLabs | undefined
   const clips = () => `${data}/voice`
   const allLines = () => [GREETING, ...moods.flatMap(mood => mood.lines)]
-  // The mood whose line was last spoken in this turn; -1 before the first,
-  // which is said when the bubble pops up.
-  let spokenMood = 0
+  // The mood whose lines the bubble shows; -1 before a turn's first line.
+  let shownMood = 0
+  // Set while a line is being said, so lines never talk over each other.
+  let isSpeaking = false
   const source = () => {
     const { file, generation } = frames[frame % frames.length] as Frame
 
@@ -385,25 +386,27 @@ export const register: Register = (on, options) => {
         return
       }
       const now = await $.clock.now()
+      // A new mood shows its line at once; within a mood the line changes every
+      // LINE_MS. Each new line is said as it appears.
       const mood = moodAt(now)
-      if (mood !== spokenMood) {
-        spokenMood = mood
-        // Show the new mood's line now, the one that is said, and restart the
-        // bubble's rhythm from here so the two stay together.
+      const isNewMood = mood !== shownMood
+      if (isNewMood || now - lastLineAt >= LINE_MS) {
+        if (isNewMood) {
+          shownMood = mood
+        } else {
+          line += 1
+        }
         lastLineAt = now
         $.ui.invalidate('ui.render')
-        if (isVoiced) {
+        if (isVoiced && !isSpeaking) {
+          isSpeaking = true
           void speak($, eleven, clips(), say(now) ?? '').then(result => {
+            isSpeaking = false
             if ('error' in result) {
               $.ui.log(result.error)
             }
           })
         }
-      }
-      if (now - lastLineAt >= LINE_MS) {
-        line += 1
-        lastLineAt = now
-        $.ui.invalidate('ui.render')
       }
       if (frames.length < 2) {
         return
@@ -422,7 +425,7 @@ export const register: Register = (on, options) => {
     startedAt = await $.clock.now()
     lastLineAt = startedAt
     line = Math.floor(Math.random() * 3)
-    spokenMood = -1
+    shownMood = -1
 
     return next(e)
   })
