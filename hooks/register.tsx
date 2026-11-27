@@ -187,27 +187,6 @@ export const register: Register = on => {
       // No ps or python3: keep the default.
     }
     const dir = `${data}/frames`
-    // Frames used to live in the installed plugin, one copy per version under
-    // the plugin's cache folder: copy the newest set over once.
-    if (!(await $.fs.exists(dir))) {
-      const versions = `${$.plugin.root}/..`
-      let newest: { path: string; mtimeMs: number } | undefined
-      for (const version of await $.fs.list(versions)) {
-        const path = `${versions}/${version.name}/frames`
-        if (version.kind !== 'dir' || !(await $.fs.exists(path))) {
-          continue
-        }
-        const hasFrames = (await $.fs.list(path)).some(entry => entry.kind === 'file' && isFrameFile(entry.name))
-        const { mtimeMs } = await $.fs.stat(path)
-        if (hasFrames && mtimeMs > (newest?.mtimeMs ?? -1)) {
-          newest = { path, mtimeMs }
-        }
-      }
-      if (newest !== undefined) {
-        const { exitCode, stderr } = await $.process.run(['cp', '-R', newest.path, dir])
-        $.ui.log(exitCode === 0 ? `copied frames from ${newest.path} to ${dir}` : `copying frames from ${newest.path} failed: ${stderr}`)
-      }
-    }
     frames = toFrames(dir, (await $.fs.exists(dir)) ? await $.fs.list(dir) : [])
     if (frames[0] !== undefined) {
       columns = columnsFor((await $.fs.read(frames[0].file, { as: 'bytes', length: 24 })).base64, cellRatio)
