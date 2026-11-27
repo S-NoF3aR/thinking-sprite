@@ -15,6 +15,22 @@ The sprite is drawn as real pixels only in terminals with an image protocol: kit
 - Optional: [ImageMagick 7](https://imagemagick.org) (`magick`), only for `/sprite-gif`.
 - `/sprite-moods` asks Claude Haiku for new lines, which counts toward the session's cost.
 
+## What it runs and sends
+
+The plugin is a Claude Code mod (`hooks/register.tsx`). It runs these programs, each with fixed arguments:
+
+| Program | When | Why |
+|---|---|---|
+| `mkdir -p` | Session start, only when Claude Code names no data folder | Creates the plugin's data folder |
+| `ps -o tty=` (through `sh -c` when Claude Code gives no `CLAUDE_PID`) | Session start | Finds the terminal Claude Code draws in |
+| `python3 -I -c …` | Session start | Reads that terminal's cell size in pixels (`TIOCGWINSZ`), so the sprite is not squeezed. Reads nothing else |
+| `cp -R` | Session start, once | Copies frames from an older plugin version into the data folder |
+| `magick`, `mkdir -p`, `rm -rf`, `mv` | Only on `/sprite-gif` | Turns the GIF you name into frames and replaces `frames/` in the data folder. `rm -rf` only touches `frames/` and `frames.new/` there |
+
+It reads only its own data folder (`frames/`, `moods.json`) and the GIF you pass to `/sprite-gif`.
+
+It sends data out in one case: `/sprite-moods <tone>` sends the tone you type to Claude Haiku through Claude Code's own model call, as part of your session, and writes the reply to `moods.json`. Nothing else leaves your machine, and the plugin makes no network requests of its own.
+
 ## Install
 
 At the prompt of a Claude Code terminal session:
