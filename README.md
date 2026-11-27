@@ -13,6 +13,7 @@ The sprite is drawn as real pixels only in terminals with an image protocol: kit
 - Your own frames (see [Adding the sprite](#adding-the-sprite)). Without them the plugin draws nothing.
 - Optional: `python3`, to measure the terminal's cell size. Without it the plugin uses `DEFAULT_CELL_RATIO`.
 - Optional: [ImageMagick 7](https://imagemagick.org) (`magick`), only for `/sprite-gif`.
+- Optional: `spd-say` (speech-dispatcher) or `espeak-ng`, only for `/sprite-voice`.
 - `/sprite-moods` asks Claude Haiku for new lines, which counts toward the session's cost.
 
 ## What it runs and sends
@@ -24,9 +25,10 @@ The plugin is a Claude Code mod (`hooks/register.tsx`). It runs these programs, 
 | `mkdir -p` | Session start, only when Claude Code names no data folder | Creates the plugin's data folder |
 | `ps -o tty=` (through `sh -c` when Claude Code gives no `CLAUDE_PID`) | Session start | Finds the terminal Claude Code draws in |
 | `python3 -I -c …` | Session start | Reads that terminal's cell size in pixels (`TIOCGWINSZ`), so the sprite is not squeezed. Reads nothing else |
+| `spd-say` or `espeak-ng` | Only while `/sprite-voice` is on, when the mood changes | Says the bubble's line aloud, on this computer |
 | `magick`, `mkdir -p`, `rm -rf`, `mv` | Only on `/sprite-gif` | Turns the GIF you name into frames and replaces `frames/` in the data folder. `rm -rf` only touches `frames/` and `frames.new/` there |
 
-It reads only its own data folder (`frames/`, `moods.json`) and the GIF you pass to `/sprite-gif`.
+It reads only its own data folder (`frames/`, `moods.json`, `voice.json`) and the GIF you pass to `/sprite-gif`.
 
 It sends data out in one case: `/sprite-moods <tone>` sends the tone you type to Claude Haiku through Claude Code's own model call, as part of your session, and writes the reply to `moods.json`. Nothing else leaves your machine, and the plugin makes no network requests of its own.
 
@@ -73,6 +75,12 @@ Put a `moods.json` file into the same data folder. Each mood is a list of lines 
 The file is read when a session starts. Without it, or when it is not valid, the bubble shows the built-in lines from `DEFAULT_MOODS` in `hooks/register.tsx`, and the debug log (`claude --debug`) says what was wrong with the file.
 
 To have new lines written for you, run `/sprite-moods <tone>`, for example `/sprite-moods grumpy pirate`. It asks Claude Haiku for four moods of three lines each, writes them to `moods.json` (replacing what is there) and uses them right away. The request counts toward the session's cost like any other.
+
+## Talking
+
+`/sprite-voice` has the sprite say its lines aloud; run it again to stop. It speaks once each time the mood changes during a turn (at 15, 45 and 120 seconds with the built-in moods), not every time the bubble changes, and stays quiet for the first mood so short turns make no sound. `*actions*` between asterisks are left out.
+
+It uses `spd-say` (speech-dispatcher) with its `female1` voice, or `espeak-ng` where that is missing, and says so when neither works. The speech is made on your computer; nothing is sent anywhere. The setting is kept in `voice.json` in the data folder. To change the voice, adjust `VOICES` in `hooks/register.tsx`.
 
 ## Turning a GIF into frames
 

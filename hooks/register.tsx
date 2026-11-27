@@ -1,8 +1,48 @@
-import type { FsEntry, Register } from 'claude-code'
+import type { FsEntry, Hook, Register } from 'claude-code'
 
 const KEY = 'sprite'
 const FRAME_MS = 350
 const LINE_MS = 4000
+
+type Api = Parameters<Hook<'command.run'>>[0]
+// Speech programs tried in order; each gets the line as its last argument.
+const VOICES = [
+  ['spd-say', '-t', 'female1'],
+  ['espeak-ng', '-v', 'en+f3'],
+]
+
+// Says a line with the first of `voices` that works and resolves that one, or
+// undefined when none does. Spawned, so the child runs on after the hook returns.
+async function speak($: Api, voices: string[][], text: string): Promise<string[] | undefined> {
+  const words = spoken(text)
+  for (const candidate of voices) {
+    if (words === '') {
+      return candidate
+    }
+    try {
+      const child = $.process.spawn({ argv: [...candidate, words] })
+      let step = await child.next()
+      while (step.done !== true) {
+        step = await child.next()
+      }
+      if (step.value.code === 0) {
+        return candidate
+      }
+    } catch {
+      // Not installed: try the next one.
+    }
+  }
+
+  return undefined
+}
+
+// What a line sounds like: *actions* dropped, no leading dash read as an option.
+export const spoken = (text: string) =>
+  text
+    .replace(/\*[^*]*\*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^-+\s*/, '')
 // The columns follow from the frames' aspect ratio, see columnsFor.
 const ROWS = 5
 // The width when the frames' size cannot be read.
@@ -116,14 +156,23 @@ export const register: Register = on => {
   let startedAt = 0
   let line = 0
   let lastLineAt = 0
+  let isVoiced = false
+  let voice: string[] | undefined
+  // The mood whose line was last spoken in this turn; the first mood stays quiet.
+  let spokenMood = 0
   const source = () => {
     const { file, generation } = frames[frame % frames.length] as Frame
 
     return { file, generation, format: 'png' as const }
   }
-  const say = (now: number) => {
+  const moodAt = (now: number) => {
     const elapsed = now - startedAt
-    const mood = [...moods].reverse().find(one => elapsed >= one.after) ?? moods[0]!
+    const index = moods.findLastIndex(one => elapsed >= one.after)
+
+    return Math.max(index, 0)
+  }
+  const say = (now: number) => {
+    const mood = moods[moodAt(now)]!
 
     return mood.lines[line % mood.lines.length]
   }
@@ -137,6 +186,10 @@ export const register: Register = on => {
       name: 'sprite-gif',
       description: 'Replace the sprite frames with the frames of a GIF',
       argumentHint: '<path to gif>',
+    })
+    await $.command.register({
+      name: 'sprite-voice',
+      description: 'Have the sprite say its lines aloud, or stop it',
     })
     await $.command.register({
       name: 'sprite-moods',
@@ -204,11 +257,28 @@ export const register: Register = on => {
         $.ui.log(`${moodsFile}: ${error}, using the built-in lines`)
       }
     }
+    const voiceFile = `${data}/voice.json`
+    if (await $.fs.exists(voiceFile)) {
+      try {
+        isVoiced = JSON.parse(await $.fs.read(voiceFile)).enabled === true
+      } catch (error) {
+        $.ui.log(`${voiceFile}: ${error}, voice stays off`)
+      }
+    }
     $.clock.every(FRAME_MS, async () => {
       if (isHidden || site === undefined) {
         return
       }
       const now = await $.clock.now()
+      const mood = moodAt(now)
+      if (mood !== spokenMood) {
+        spokenMood = mood
+        if (isVoiced) {
+          void speak($, voice === undefined ? VOICES : [voice], say(now) ?? '').then(found => {
+            voice = found
+          })
+        }
+      }
       if (now - lastLineAt >= LINE_MS) {
         line += 1
         lastLineAt = now
@@ -231,6 +301,7 @@ export const register: Register = on => {
     startedAt = await $.clock.now()
     lastLineAt = startedAt
     line = Math.floor(Math.random() * 3)
+    spokenMood = 0
 
     return next(e)
   })
@@ -246,6 +317,22 @@ export const register: Register = on => {
     $.ui.invalidate('ui.render')
 
     return { text: isHidden ? 'Sprite hidden.' : 'Sprite shown.' }
+  })
+
+  on('command.run', { command: 'sprite-voice' }, async $ => {
+    if (dataError !== undefined) {
+      return { text: `Could not get the plugin's data folder: ${dataError}` }
+    }
+    if (!isVoiced) {
+      voice = await speak($, VOICES, 'Fine. I will talk.')
+    }
+    if (!isVoiced && voice === undefined) {
+      return { text: `No speech program worked. Install one of: ${VOICES.map(one => one[0]).join(', ')}.` }
+    }
+    isVoiced = !isVoiced
+    await $.fs.write(`${data}/voice.json`, `${JSON.stringify({ enabled: isVoiced })}\n`)
+
+    return { text: isVoiced ? `Voice on, using ${voice?.[0]}.` : 'Voice off.' }
   })
 
   on('command.run', { command: 'sprite-gif' }, async ($, e) => {
