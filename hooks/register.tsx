@@ -387,6 +387,10 @@ export const register: Register = (on, options) => {
       const mood = moodAt(now)
       if (mood !== spokenMood) {
         spokenMood = mood
+        // Show the new mood's line now, the one that is said, and restart the
+        // bubble's rhythm from here so the two stay together.
+        lastLineAt = now
+        $.ui.invalidate('ui.render')
         if (isVoiced) {
           void speak($, eleven, clips(), say(now) ?? '').then(result => {
             if ('error' in result) {
