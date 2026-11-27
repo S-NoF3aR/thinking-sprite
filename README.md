@@ -6,6 +6,15 @@ The sprite is drawn as real pixels only in terminals with an image protocol: kit
 
 ![The sprite and its speech bubble next to the thinking line](docs/example.png)
 
+## Requirements
+
+- Claude Code in a terminal.
+- For the sprite as real pixels: kitty, Ghostty, iTerm2 3.5 or later, or tmux with `allow-passthrough` on. Other terminals show `(¬_¬)`.
+- Your own frames (see [Adding the sprite](#adding-the-sprite)). Without them the plugin draws nothing.
+- Optional: `python3`, to measure the terminal's cell size. Without it the plugin uses `DEFAULT_CELL_RATIO`.
+- Optional: [ImageMagick 7](https://imagemagick.org) (`magick`), only for `/sprite-gif`.
+- `/sprite-moods` asks Claude Haiku for new lines, which counts toward the session's cost.
+
 ## Install
 
 At the prompt of a Claude Code terminal session:
@@ -54,7 +63,7 @@ To have new lines written for you, run `/sprite-moods <tone>`, for example `/spr
 
 ## Turning a GIF into frames
 
-`/sprite-gif <path to gif>` does steps 2 and 3 below in one go: it crops the GIF to the figure, scales it to 200 pixels high, replaces the frames in the data folder and shows them right away. It needs `magick` on the `PATH`. The cropping works for a dark or transparent background. For a light background, a transparent background or another frame delay, use the steps below.
+`/sprite-gif <path to gif>` does steps 2 and 3 below in one go: it crops the GIF to the figure, scales it to 200 pixels high, replaces the frames in the data folder and shows them right away. It needs `magick` on the `PATH`. The cropping works for a dark or transparent background. For a light background or another frame delay, use the steps below.
 
 These steps use [ImageMagick 7](https://imagemagick.org) (`magick`). Run them in the plugin's data folder, with your GIF as `sprite.gif`.
 

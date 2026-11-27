@@ -1,1 +1,10 @@
-{ "name": "thinking-sprite", "version": "0.3.0", "description": "Animated sprite on Claude Code's thinking line" }
+{
+  "name": "thinking-sprite",
+  "version": "0.3.0",
+  "description": "Animated sprite on Claude Code's thinking line",
+  "author": { "name": "S-NoF3aR", "url": "https://github.com/S-NoF3aR" },
+  "homepage": "https://github.com/S-NoF3aR/thinking-sprite",
+  "repository": "https://github.com/S-NoF3aR/thinking-sprite",
+  "license": "MIT",
+  "keywords": ["sprite", "thinking", "animation", "terminal", "kitty"]
+}
