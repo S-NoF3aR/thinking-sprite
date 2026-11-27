@@ -266,6 +266,8 @@ export const register: Register = (on, options) => {
   let shownMood = 0
   // Set while a line is being said, so lines never talk over each other.
   let isSpeaking = false
+  // Set from a prompt until its turn completes; the bubble changes and talks only then.
+  let isTurnRunning = false
   const source = () => {
     const { file, generation } = frames[frame % frames.length] as Frame
 
@@ -382,7 +384,7 @@ export const register: Register = (on, options) => {
       }
     }
     $.clock.every(FRAME_MS, async () => {
-      if (isHidden || site === undefined) {
+      if (isHidden || site === undefined || !isTurnRunning) {
         return
       }
       const now = await $.clock.now()
@@ -426,6 +428,26 @@ export const register: Register = (on, options) => {
     lastLineAt = startedAt
     line = Math.floor(Math.random() * 3)
     shownMood = -1
+    isTurnRunning = true
+
+    return next(e)
+  })
+
+  // A main turn that no prompt started, as a background task's, runs the bubble too.
+  on('turn.start', async ($, e, next) => {
+    if (e.agentId === undefined) {
+      isTurnRunning = true
+    }
+
+    return next(e)
+  })
+
+  // The main turn's end, finished or stopped: the bubble stops changing and talking.
+  on('turn.complete', async ($, e, next) => {
+    if (e.agentId === undefined) {
+      isTurnRunning = false
+      site = undefined
+    }
 
     return next(e)
   })
