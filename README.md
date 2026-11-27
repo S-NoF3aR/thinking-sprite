@@ -4,6 +4,8 @@ A Claude Code plugin that shows a small animated sprite next to the thinking lin
 
 The sprite is drawn as real pixels only in terminals with an image protocol: kitty, Ghostty, iTerm2 3.5 or later, and tmux with `allow-passthrough` on. Other terminals show `(¬_¬)` instead.
 
+![The sprite and its speech bubble next to the thinking line](docs/example.png)
+
 ## Install
 
 At the prompt of a Claude Code terminal session:
