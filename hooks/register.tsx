@@ -262,7 +262,8 @@ export const register: Register = (on, options) => {
   let eleven: ElevenLabs | undefined
   const clips = () => `${data}/voice`
   const allLines = () => [GREETING, ...moods.flatMap(mood => mood.lines)]
-  // The mood whose line was last spoken in this turn; the first mood stays quiet.
+  // The mood whose line was last spoken in this turn; -1 before the first,
+  // which is said when the bubble pops up.
   let spokenMood = 0
   const source = () => {
     const { file, generation } = frames[frame % frames.length] as Frame
@@ -421,7 +422,7 @@ export const register: Register = (on, options) => {
     startedAt = await $.clock.now()
     lastLineAt = startedAt
     line = Math.floor(Math.random() * 3)
-    spokenMood = 0
+    spokenMood = -1
 
     return next(e)
   })

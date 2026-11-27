@@ -86,7 +86,7 @@ To have new lines written for you, run `/sprite-moods <tone>`, for example `/spr
 
 ## Talking
 
-`/sprite-voice` has the sprite say its lines aloud; run it again to stop. It speaks once each time the mood changes during a turn (at 15, 45 and 120 seconds with the built-in moods), not every time the bubble changes, and stays quiet for the first mood so short turns make no sound. `*actions*` between asterisks are left out.
+`/sprite-voice` has the sprite say its lines aloud; run it again to stop. It speaks when the bubble pops up at the start of a turn and again each time the mood changes (at 15, 45 and 120 seconds with the built-in moods), not every time the bubble changes lines. `*actions*` between asterisks are left out.
 
 ### With ElevenLabs (natural voice)
 
