@@ -1,10 +1,47 @@
 {
   "name": "thinking-sprite",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Animated sprite on Claude Code's thinking line",
-  "author": { "name": "S-NoF3aR", "url": "https://github.com/S-NoF3aR" },
+  "author": {
+    "name": "S-NoF3aR",
+    "url": "https://github.com/S-NoF3aR"
+  },
   "homepage": "https://github.com/S-NoF3aR/thinking-sprite",
   "repository": "https://github.com/S-NoF3aR/thinking-sprite",
   "license": "MIT",
-  "keywords": ["sprite", "thinking", "animation", "terminal", "kitty"]
+  "keywords": [
+    "sprite",
+    "thinking",
+    "animation",
+    "terminal",
+    "kitty"
+  ],
+  "network": {
+    "hosts": [
+      "api.elevenlabs.io"
+    ]
+  },
+  "userConfig": {
+    "elevenlabsApiKey": {
+      "type": "string",
+      "title": "ElevenLabs API key",
+      "description": "For /sprite-voice with a natural voice. Leave empty to use spd-say or espeak-ng.",
+      "sensitive": true,
+      "required": false
+    },
+    "elevenlabsVoiceId": {
+      "type": "string",
+      "title": "ElevenLabs voice ID",
+      "description": "The voice the sprite speaks with, from your ElevenLabs voice library.",
+      "required": false,
+      "default": ""
+    },
+    "elevenlabsModel": {
+      "type": "string",
+      "title": "ElevenLabs model",
+      "description": "The ElevenLabs model that renders the lines.",
+      "required": false,
+      "default": "eleven_multilingual_v2"
+    }
+  }
 }

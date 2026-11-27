@@ -3,37 +3,139 @@ import type { FsEntry, Hook, Register } from 'claude-code'
 const KEY = 'sprite'
 const FRAME_MS = 350
 const LINE_MS = 4000
+const GREETING = 'Fine. I will talk.'
 
 type Api = Parameters<Hook<'command.run'>>[0]
-// Speech programs tried in order; each gets the line as its last argument.
+// Speech programs tried in order when ElevenLabs is not set up; each gets the
+// line as its last argument.
 const VOICES = [
   ['spd-say', '-t', 'female1'],
   ['espeak-ng', '-v', 'en+f3'],
 ]
+// Players tried in order for a rendered clip; each gets the file last.
+const PLAYERS = [['pw-play'], ['paplay'], ['ffplay', '-nodisp', '-autoexit', '-loglevel', 'quiet']]
+const ELEVENLABS_URL = 'https://api.elevenlabs.io/v1/text-to-speech'
 
-// Says a line with the first of `voices` that works and resolves that one, or
-// undefined when none does. Spawned, so the child runs on after the hook returns.
-async function speak($: Api, voices: string[][], text: string): Promise<string[] | undefined> {
-  const words = spoken(text)
-  for (const candidate of voices) {
-    if (words === '') {
-      return candidate
+type ElevenLabs = { key: string; voiceId: string; model: string }
+
+// Runs a command to its end and resolves its exit code and what it wrote to
+// stderr. Spawned, so it runs on after the hook that started it returns.
+async function finish($: Api, argv: string[], input?: string) {
+  const child = $.process.spawn(input === undefined ? { argv } : { argv, input })
+  let stderr = ''
+  let step = await child.next()
+  while (step.done !== true) {
+    if (step.value.stream === 'stderr') {
+      stderr += step.value.text
     }
+    step = await child.next()
+  }
+
+  return { code: step.value.code, stderr: stderr.trim() }
+}
+
+// A clip's file name, from everything that changes how it sounds (FNV-1a).
+export const clipName = (voiceId: string, model: string, words: string) => {
+  let hash = 0x811c9dc5
+  for (const char of `${voiceId}\n${model}\n${words}`) {
+    hash ^= char.codePointAt(0) ?? 0
+    hash = Math.imul(hash, 0x01000193) >>> 0
+  }
+
+  return `${hash.toString(16).padStart(8, '0')}.mp3`
+}
+
+// Has ElevenLabs say a line into an MP3 in `dir`, once: a clip already there
+// is reused. Resolves the clip's path, or why it could not be made.
+async function render($: Api, eleven: ElevenLabs, dir: string, text: string): Promise<{ file: string } | { error: string }> {
+  const words = spoken(text)
+  const file = `${dir}/${clipName(eleven.voiceId, eleven.model, words)}`
+  if (await $.fs.exists(file)) {
+    return { file }
+  }
+  try {
+    await finish($, ['mkdir', '-p', dir])
+    const body = `${file}.json`
+    const part = `${file}.part`
+    await $.fs.write(body, JSON.stringify({ text: words, model_id: eleven.model }))
+    // The key goes to curl on stdin, so it never shows in the process list.
+    const config = [
+      `url = "${ELEVENLABS_URL}/${encodeURIComponent(eleven.voiceId)}?output_format=mp3_44100_128"`,
+      `header = "xi-api-key: ${eleven.key.replace(/["\\\r\n]/g, '')}"`,
+      'header = "Content-Type: application/json"',
+    ].join('\n')
+    const curl = ['curl', '-sS', '--fail-with-body', '--max-time', '30', '-X', 'POST', '--data-binary', `@${body}`]
+    const { code, stderr } = await finish($, [...curl, '-o', part, '--config', '-'], `${config}\n`)
+    let error: string | undefined
+    if (code !== 0) {
+      // With --fail-with-body the part file holds ElevenLabs' error message.
+      const answer = (await $.fs.exists(part)) ? (await $.fs.read(part)).slice(0, 300) : ''
+      error = `ElevenLabs: ${answer || stderr || `curl exited with ${code}`}`
+    } else {
+      await finish($, ['mv', part, file])
+    }
+    await finish($, ['rm', '-f', body, part])
+
+    return error === undefined ? { file } : { error }
+  } catch (error) {
+    return { error: `${error instanceof Error ? error.message : error}` }
+  }
+}
+
+// Renders every line not rendered yet; resolves the first error, if any.
+async function renderAll($: Api, eleven: ElevenLabs, dir: string, lines: string[]) {
+  for (const text of lines) {
+    const result = await render($, eleven, dir, text)
+    if ('error' in result) {
+      return result.error
+    }
+  }
+
+  return undefined
+}
+
+// Plays a file with the first player that works.
+async function play($: Api, file: string) {
+  for (const player of PLAYERS) {
     try {
-      const child = $.process.spawn({ argv: [...candidate, words] })
-      let step = await child.next()
-      while (step.done !== true) {
-        step = await child.next()
-      }
-      if (step.value.code === 0) {
-        return candidate
+      if ((await finish($, [...player, file])).code === 0) {
+        return true
       }
     } catch {
       // Not installed: try the next one.
     }
   }
 
-  return undefined
+  return false
+}
+
+// Says a line: with ElevenLabs when it is set up, else with the first speech
+// program that works. Resolves what said it, or why nothing did.
+async function speak($: Api, eleven: ElevenLabs | undefined, dir: string, text: string): Promise<{ by: string } | { error: string }> {
+  if (spoken(text) === '') {
+    return { by: 'nobody' }
+  }
+  if (eleven !== undefined) {
+    const result = await render($, eleven, dir, text)
+    if ('error' in result) {
+      return result
+    }
+
+    return (await play($, result.file))
+      ? { by: 'ElevenLabs' }
+      : { error: `No player worked. Install one of: ${PLAYERS.map(one => one[0]).join(', ')}.` }
+  }
+  for (const voice of VOICES) {
+    try {
+      if ((await finish($, [...voice, spoken(text)])).code === 0) {
+        return { by: voice[0]! }
+      }
+    } catch {
+      // Not installed: try the next one.
+    }
+  }
+
+  return { error: `No speech program worked. Install one of: ${VOICES.map(one => one[0]).join(', ')}.` }
 }
 
 // What a line sounds like: *actions* dropped, no leading dash read as an option.
@@ -142,7 +244,7 @@ const toFrames = (dir: string, entries: FsEntry[]): Frame[] =>
     // The modification time makes the terminal read a replaced file again.
     .map(entry => ({ file: `${dir}/${entry.name}`, generation: Math.floor(entry.mtimeMs) }))
 
-export const register: Register = on => {
+export const register: Register = (on, options) => {
   let frames: Frame[] = []
   let columns = ROWS
   let cellRatio = DEFAULT_CELL_RATIO
@@ -157,7 +259,9 @@ export const register: Register = on => {
   let line = 0
   let lastLineAt = 0
   let isVoiced = false
-  let voice: string[] | undefined
+  let eleven: ElevenLabs | undefined
+  const clips = () => `${data}/voice`
+  const allLines = () => [GREETING, ...moods.flatMap(mood => mood.lines)]
   // The mood whose line was last spoken in this turn; the first mood stays quiet.
   let spokenMood = 0
   const source = () => {
@@ -257,6 +361,16 @@ export const register: Register = on => {
         $.ui.log(`${moodsFile}: ${error}, using the built-in lines`)
       }
     }
+    const option = (name: string) => {
+      const value = options[name]
+
+      return typeof value === 'string' ? value.trim() : ''
+    }
+    const key = option('elevenlabsApiKey') || ((await $.env.get('ELEVENLABS_API_KEY')) ?? '').trim()
+    const voiceId = option('elevenlabsVoiceId') || ((await $.env.get('ELEVENLABS_VOICE_ID')) ?? '').trim()
+    if (key !== '' && voiceId !== '') {
+      eleven = { key, voiceId, model: option('elevenlabsModel') || 'eleven_multilingual_v2' }
+    }
     const voiceFile = `${data}/voice.json`
     if (await $.fs.exists(voiceFile)) {
       try {
@@ -274,8 +388,10 @@ export const register: Register = on => {
       if (mood !== spokenMood) {
         spokenMood = mood
         if (isVoiced) {
-          void speak($, voice === undefined ? VOICES : [voice], say(now) ?? '').then(found => {
-            voice = found
+          void speak($, eleven, clips(), say(now) ?? '').then(result => {
+            if ('error' in result) {
+              $.ui.log(result.error)
+            }
           })
         }
       }
@@ -323,16 +439,32 @@ export const register: Register = on => {
     if (dataError !== undefined) {
       return { text: `Could not get the plugin's data folder: ${dataError}` }
     }
+    let by = ''
     if (!isVoiced) {
-      voice = await speak($, VOICES, 'Fine. I will talk.')
-    }
-    if (!isVoiced && voice === undefined) {
-      return { text: `No speech program worked. Install one of: ${VOICES.map(one => one[0]).join(', ')}.` }
+      if (eleven !== undefined) {
+        const error = await renderAll($, eleven, clips(), allLines())
+        if (error !== undefined) {
+          return { text: `Voice stays off. ${error}` }
+        }
+      }
+      const result = await speak($, eleven, clips(), GREETING)
+      if ('error' in result) {
+        return { text: `Voice stays off. ${result.error}` }
+      }
+      by = result.by
     }
     isVoiced = !isVoiced
     await $.fs.write(`${data}/voice.json`, `${JSON.stringify({ enabled: isVoiced })}\n`)
+    if (!isVoiced) {
+      return { text: 'Voice off.' }
+    }
 
-    return { text: isVoiced ? `Voice on, using ${voice?.[0]}.` : 'Voice off.' }
+    return {
+      text:
+        eleven === undefined
+          ? `Voice on, using ${by}. For a natural voice, set an ElevenLabs API key and voice ID (see the README).`
+          : `Voice on, using ElevenLabs voice ${eleven.voiceId}. All ${allLines().length} lines are ready.`,
+    }
   })
 
   on('command.run', { command: 'sprite-gif' }, async ($, e) => {
@@ -413,6 +545,14 @@ export const register: Register = on => {
     await $.fs.write(file, `${JSON.stringify(generated, null, 2)}\n`)
     moods = generated
     $.ui.invalidate('ui.render')
+    if (isVoiced && eleven !== undefined) {
+      // The new lines are rendered in the background, ready before they are said.
+      void renderAll($, eleven, clips(), allLines()).then(error => {
+        if (error !== undefined) {
+          $.ui.log(error)
+        }
+      })
+    }
     const preview = generated.map(mood => `${mood.after / 1000}s: ${mood.lines.join(' · ')}`).join('\n')
 
     return { text: `New lines in ${file}:\n${preview}` }
