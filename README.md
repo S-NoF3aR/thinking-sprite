@@ -13,6 +13,7 @@ The sprite is drawn as real pixels only in terminals with an image protocol: kit
 - Your own frames (see [Adding the sprite](#adding-the-sprite)). Without them the plugin draws nothing.
 - Optional: `python3`, to measure the terminal's cell size. Without it the plugin uses `DEFAULT_CELL_RATIO`.
 - Optional: [ImageMagick 7](https://imagemagick.org) (`magick`), only for `/sprite-gif`.
+- Optional, only for `/sprite-voice`: an [ElevenLabs](https://elevenlabs.io) API key with `curl` and `pw-play`, `paplay` or `ffplay`; or else `spd-say` (speech-dispatcher) or `espeak-ng`.
 - `/sprite-moods` asks Claude Haiku for new lines, which counts toward the session's cost.
 
 ## What it runs and sends
@@ -24,11 +25,20 @@ The plugin is a Claude Code mod (`hooks/register.tsx`). It runs these programs, 
 | `mkdir -p` | Session start, only when Claude Code names no data folder | Creates the plugin's data folder |
 | `ps -o tty=` (through `sh -c` when Claude Code gives no `CLAUDE_PID`) | Session start | Finds the terminal Claude Code draws in |
 | `python3 -I -c …` | Session start | Reads that terminal's cell size in pixels (`TIOCGWINSZ`), so the sprite is not squeezed. Reads nothing else |
+| `curl` | Only with an ElevenLabs key: on `/sprite-voice`, after `/sprite-moods`, and for a line not rendered yet | Has ElevenLabs render a line to an MP3 in the data folder. The key goes to `curl` on standard input, never on the command line |
+| `pw-play`, `paplay` or `ffplay` | Only with an ElevenLabs key, when a line is said | Plays the rendered MP3 |
+| `spd-say` or `espeak-ng` | Only without an ElevenLabs key, when a line is said | Says the bubble's line aloud, on this computer |
+| `mkdir -p`, `mv`, `rm -f` | When a line is rendered | Keeps the rendered clips in `voice/` in the data folder |
 | `magick`, `mkdir -p`, `rm -rf`, `mv` | Only on `/sprite-gif` | Turns the GIF you name into frames and replaces `frames/` in the data folder. `rm -rf` only touches `frames/` and `frames.new/` there |
 
-It reads only its own data folder (`frames/`, `moods.json`) and the GIF you pass to `/sprite-gif`.
+It reads only its own data folder (`frames/`, `moods.json`, `voice.json`) and the GIF you pass to `/sprite-gif`.
 
-It sends data out in one case: `/sprite-moods <tone>` sends the tone you type to Claude Haiku through Claude Code's own model call, as part of your session, and writes the reply to `moods.json`. Nothing else leaves your machine, and the plugin makes no network requests of its own.
+It sends data out in two cases:
+
+- `/sprite-moods <tone>` sends the tone you type to Claude Haiku through Claude Code's own model call, as part of your session, and writes the reply to `moods.json`.
+- With an ElevenLabs API key set, the sprite's lines (without `*actions*`) are sent to `api.elevenlabs.io` with your key and voice ID, once per line, voice and model, to render them. Your prompts, code and conversation are never sent.
+
+Nothing else leaves your machine.
 
 ## Install
 
@@ -73,6 +83,24 @@ Put a `moods.json` file into the same data folder. Each mood is a list of lines 
 The file is read when a session starts. Without it, or when it is not valid, the bubble shows the built-in lines from `DEFAULT_MOODS` in `hooks/register.tsx`, and the debug log (`claude --debug`) says what was wrong with the file.
 
 To have new lines written for you, run `/sprite-moods <tone>`, for example `/sprite-moods grumpy pirate`. It asks Claude Haiku for four moods of three lines each, writes them to `moods.json` (replacing what is there) and uses them right away. The request counts toward the session's cost like any other.
+
+## Talking
+
+`/sprite-voice` has the sprite say its lines aloud; run it again to stop. It says each line as the bubble shows it: when the bubble pops up, every 4 seconds after that, and at once when the mood changes (at 15, 45 and 120 seconds with the built-in moods). A line that comes while the last one is still being said is shown but not said. `*actions*` between asterisks are left out.
+
+### With ElevenLabs (natural voice)
+
+1. In [ElevenLabs](https://elevenlabs.io), pick a voice, for example from the Voice Library, add it to your voices and copy its voice ID.
+2. Create an API key with text-to-speech access.
+3. Give both to the plugin: in its options (`/plugin`, then thinking-sprite, then configure; the key is kept in secure storage), or as `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` in the environment Claude Code starts in. `elevenlabsModel` picks the model, `eleven_multilingual_v2` by default.
+
+`/sprite-voice` then renders every line once into `voice/` in the data folder and plays the clips from there, so a line starts at once and each one is paid for only once. After `/sprite-moods` the new lines are rendered in the background. A new voice or model renders them again.
+
+### Without ElevenLabs
+
+The plugin uses `spd-say` (speech-dispatcher) with its `female1` voice, or `espeak-ng` where that is missing. The speech is made on your computer; nothing is sent anywhere. To change the voice, adjust `VOICES` in `hooks/register.tsx`.
+
+The on/off setting is kept in `voice.json` in the data folder.
 
 ## Turning a GIF into frames
 
